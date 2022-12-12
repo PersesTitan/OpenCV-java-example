@@ -1,17 +1,16 @@
 package org.example;
 
+import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import javax.imageio.ImageIO;
 import javax.swing.ImageIcon;
@@ -19,12 +18,18 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 
 import org.opencv.core.*;
+import org.opencv.core.Point;
 import org.opencv.dnn.Dnn;
 import org.opencv.dnn.Net;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.utils.Converters;
 import org.opencv.videoio.VideoCapture;
+
+import static java.awt.Image.SCALE_SMOOTH;
+import static java.nio.charset.StandardCharsets.*;
+import static org.opencv.imgproc.Imgproc.FONT_HERSHEY_COMPLEX;
+import static org.opencv.imgproc.Imgproc.FONT_ITALIC;
 
 public class OpenCV {
     private static OpenCV openCV;
@@ -37,7 +42,7 @@ public class OpenCV {
         return openCV;
     }
 
-    private final static String imagePath = new File("opencv/img.png").getAbsolutePath();
+    private final static String imagePath = new File("opencv/car.png").getAbsolutePath();
     private final static String weights = new File("opencv/yolov3.weights").getAbsolutePath();
     private final static String cfg = new File("opencv/yolov3.cfg").getAbsolutePath();
     private final static Path namesPath = Path.of("opencv/coco.names");
@@ -81,10 +86,11 @@ public class OpenCV {
         frame.setContentPane(label);
         frame.setSize(600, 600);
         frame.setVisible(true);
+
         this.net = Dnn.readNetFromDarknet(cfg, weights);
         this.outBlobNames = getOutputNames();
         try {
-            Files.readAllLines(namesPath, StandardCharsets.UTF_8)
+            Files.readAllLines(namesPath, UTF_8)
                     .stream()
                     .map(String::strip)
                     .forEach(names::add);
@@ -119,10 +125,10 @@ public class OpenCV {
                     if (confidence > confThreshold) {
                         int centerX = (int) (row.get(0, 0)[0] * frame.cols());
                         int centerY = (int) (row.get(0, 1)[0] * frame.rows());
-                        int width = (int) (row.get(0, 2)[0] * frame.cols());
-                        int height = (int) (row.get(0, 3)[0] * frame.rows());
-                        int left = centerX - width / 2;
-                        int top = centerY - height / 2;
+                        int width   = (int) (row.get(0, 2)[0] * frame.cols());
+                        int height  = (int) (row.get(0, 3)[0] * frame.rows());
+                        int left    = centerX - width / 2;
+                        int top     = centerY - height / 2;
 
                         clsIds.add((int) classIdPoint.x);
                         confs.add(confidence);
@@ -131,7 +137,10 @@ public class OpenCV {
                 }
             }
 
-            clsIds.stream().map(names::get).forEach(System.out::println);
+            clsIds.stream()
+                    .map(names::get)
+                    .forEach(System.out::println);
+            System.out.println(confs);
 
             float nmsThresh = 0.5f;
             MatOfFloat confidences = new MatOfFloat(Converters.vector_float_to_Mat(confs));
@@ -141,13 +150,21 @@ public class OpenCV {
             Dnn.NMSBoxes(boxes, confidences, confThreshold, nmsThresh, indices);
 
             int[] ind = indices.toArray();
-            for (int idx : ind) {
-                Rect2d box = boxesArray[idx];
+            Collections.reverse(clsIds);
+            for (int i = 0; i<ind.length; i++) {
+                Rect2d box = boxesArray[ind[i]];
                 Imgproc.rectangle(frame, box.tl(), box.br(), new Scalar(0, 0, 255), 2);
+                String name = names.get(clsIds.get(i)) + " " + confs.get(i);
+                Imgproc.putText(
+                        frame, name, box.tl(),
+                        FONT_ITALIC, 1,
+                        new Scalar(0, 0, 255), 2);
             }
+
             ImageIcon image = new ImageIcon(getImage(frame));
-            this.label.setIcon(image);
-            this.label.repaint();
+            Image img = image.getImage().getScaledInstance(600, 600, SCALE_SMOOTH);
+            label.setIcon(new ImageIcon(img));
+            label.repaint();
         }
     }
 }
